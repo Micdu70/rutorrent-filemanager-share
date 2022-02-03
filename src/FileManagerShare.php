@@ -30,6 +30,7 @@ class FileManagerShare extends WebController
     //private $limits;
 
     protected $storage;
+    protected $exStorage;
     protected $encoder;
     /**
      * @var string
@@ -42,6 +43,7 @@ class FileManagerShare extends WebController
         parent::__construct($config);
 
         $this->storage = new rCache('/'.(new \ReflectionClass($this))->getShortName());
+        $this->exStorage = new rCache('/'.(new \ReflectionClass($this))->getShortName(), true);
         $this->encoder = new Crypt();
 
         # we need the full path from the storage engine
@@ -71,11 +73,10 @@ class FileManagerShare extends WebController
         $password = $params->pass;
         global $limits;
 
-        $file = $this->flm->currentDir($params->target);
-        $fpath = $this->flm()->getFsPath($file);
+        $fpath = $this->flm()->getFsPath($params->target);
 
         if (($stat = LFS::stat($fpath)) === FALSE) {
-            throw new Exception('Invalid file: ' . $file);
+            throw new Exception('Invalid file: ' . $fpath);
         }
 
         if ($limits['nolimit'] == 0) {
@@ -108,7 +109,7 @@ class FileManagerShare extends WebController
 
         $now = time();
         $this->data = [
-            'file' => $file,
+            'file' => $fpath,
             'size' => $stat['size'],
             'created' => $now,
             'expire' => ($duration > 0) ? $now + (3600 * $duration) : 0,
@@ -168,10 +169,11 @@ class FileManagerShare extends WebController
         return isset($credentials['u']);
     }
 
-    public function read($file)
+    public function read($file, $isEx = false)
     {
         $result = (object)['hash' => $file];
-        $ret = $this->storage->get($result);
+
+        $ret = $isEx ? $this->exStorage->get($result) : $this->storage->get($result);
 
         return $ret ? $result : $ret;
     }
@@ -187,9 +189,9 @@ class FileManagerShare extends WebController
         if($token != null)
         {
             $data = array_merge($data, ['hash' => $this->getStoreFile($token)]);
+            return $this->storage->set((object)$data);
         }
-
-        return $this->storage->set((object)$data);
+        return $this->exStorage->set((object)$data);
     }
 
     public function show()
@@ -222,9 +224,7 @@ class FileManagerShare extends WebController
             }
         }
 
-        $fpath = $this->flm()->getFsPath($this->data['file']);
-
-        if (!SendFile::send($fpath, null, null, false)) {
+        if (!SendFile::send($this->data['file'], null, null, false)) {
             $this->showNotFound();
         } else {
             $this->data['downloads']++;
@@ -237,7 +237,7 @@ class FileManagerShare extends WebController
     public function load($token)
     {
         $file = self::getStoreFile($token);
-        $fileData = $this->read($file);
+        $fileData = $this->read($file, true);
 
         if ($fileData !== false) {
             $this->data = (array)$fileData;
@@ -252,11 +252,10 @@ class FileManagerShare extends WebController
         {
             $file = $this->data['file'];
         }
+        $file = is_null($file) ? '' : ': '.basename($file);
+
         header("HTTP/1.1 404 Not Found");
-        CachedEcho::send(
-            'File not found' . is_null($file) ? '' : ': '.basename($file),
-            "text/html"
-        );
+        CachedEcho::send('File not found' . $file);
     }
 
     public function showPasswordForm($withError = false)
