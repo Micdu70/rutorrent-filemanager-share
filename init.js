@@ -82,7 +82,7 @@ var table = {
             else
                 switch (table.getIdByCol(i)) {
                     case 'size' :
-                        arr[i] = theConverter.bytes(arr[i], 2);
+                        arr[i] = theConverter.unit(arr[i], 2);
                         break;
                     case 'created':
                         arr[i] = theConverter.date(iv(arr[i]) + theWebUI.deltaTime / 1000);
